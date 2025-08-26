@@ -4,11 +4,16 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { v2 as cloudinary } from "cloudinary";
 import axios from "axios";
-import oauth2client from "../config/google.js";
+import { OAuth2Client } from "google-auth-library";
 import { sendMail } from "../utills/sendEmail.js";
 import sellerModel from "../models/sellerModel.js";
 import { Admin } from "../models/adminModel.js";
 import { google } from "googleapis";
+
+// const { OAuth2Client } = require("google-auth-library");
+// import {oauth2client} from "../config/google.js";
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Helper function to generate a token
 const createToken = (id) => {
@@ -80,10 +85,37 @@ const register = async (req, res) => {
   }
 };
 
+
+
+// Normal + Google login handler
 const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, googleToken } = req.body;
 
   try {
+    // --- GOOGLE LOGIN FLOW ---
+    if (googleToken) {
+      const ticket = await client.verifyIdToken({
+        idToken: googleToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      const googleEmail = payload.email;
+
+      let user = await userModel.findOne({ email: googleEmail });
+      if (!user) {
+        user = await userModel.create({
+          email: googleEmail,
+          name: payload.name,
+          password: null,
+        });
+      }
+
+      const token = createToken(user._id);
+      return res.json({ success: true, token, message: "Google login successful!" });
+    }
+
+
+    // --- NORMAL EMAIL/PASSWORD LOGIN ---
     if (!email || !password) {
       return res.status(400).json({ success: false, message: "Email and password are required!" });
     }
@@ -94,8 +126,7 @@ const login = async (req, res) => {
     }
 
     if (!user.password) {
-      return res.status(401).json({ success: false, message: "you have not set your password try google login!" });
-
+      return res.status(401).json({ success: false, message: "You registered with Google. Please login with Google!" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -103,19 +134,19 @@ const login = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid email or password!" });
     }
 
-    // Generate token
     const token = createToken(user._id);
-
     res.json({
       success: true,
       token,
       message: "Login successful!",
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Something went wrong" });
   }
 };
+
 
 const forgetPassword = async (req, res) => {
   const { email } = req.body;
