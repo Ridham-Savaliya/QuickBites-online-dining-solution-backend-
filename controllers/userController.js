@@ -9,6 +9,8 @@ import { sendMail } from "../utills/sendEmail.js";
 import sellerModel from "../models/sellerModel.js";
 import { Admin } from "../models/adminModel.js";
 import { google } from "googleapis";
+// import bcrypt from "bcrypt";
+
 
 // const { OAuth2Client } = require("google-auth-library");
 // import {oauth2client} from "../config/google.js";
@@ -147,6 +149,34 @@ const login = async (req, res) => {
   }
 };
 
+
+
+ const verifyGoogle = async (req, res) => {
+  const { googleToken } = req.body;
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: googleToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    if (!payload.email_verified) {
+      return res.status(400).json({ success: false, message: "Google email not verified" });
+    }
+
+    // Check if the user exists
+    const user = await userModel.findOne({ email: payload.email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Email not registered" });
+    }
+
+    return res.json({ success: true, email: payload.email });
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ success: false, message: "Invalid Google token" });
+  }
+};
 
 const forgetPassword = async (req, res) => {
   const { email } = req.body;
@@ -378,4 +408,5 @@ export {
   updateProfile,
   getAllUsers,
   deleteUser,
+  verifyGoogle
 };
