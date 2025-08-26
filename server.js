@@ -194,6 +194,8 @@ app.get("/healthcheck", (req, res) => {
       </body>
     </html>
   `);
+
+  console.log('healthcheck route touched from https://quickbites-one.vercel.app at:',new Date().toLocaleString());
 });
 
 
