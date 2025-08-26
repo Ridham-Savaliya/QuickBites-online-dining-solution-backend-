@@ -146,6 +146,58 @@ socket.on('sendLocation', (data) => {
   });
 });
 
+app.get("/healthcheck", (req, res) => {
+  const now = new Date().toLocaleString();
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Quickbites Health Check</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #fef3c7, #fed7aa);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+          }
+          .container {
+            text-align: center;
+            padding: 40px;
+            background-color: #ffffffcc;
+            border-radius: 20px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            animation: fadeIn 1s ease-in-out;
+          }
+          h1 {
+            color: #f97316;
+            margin-bottom: 20px;
+          }
+          p {
+            font-size: 18px;
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>🚀 Quickbites Server is UP!</h1>
+          <p>Current time: <strong>${now}</strong></p>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
+
+
 // Testing API
 app.get("/", (req, res) => {
   res.send("Hello");

@@ -89,6 +89,9 @@ const register = async (req, res) => {
 
 
 
+
+
+
 // Normal + Google login handler
 const login = async (req, res) => {
   const { email, password, googleToken } = req.body;
