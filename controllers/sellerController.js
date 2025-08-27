@@ -6,30 +6,33 @@ import { sendMail } from "../utills/sendEmail.js";
 import { Admin } from "../models/adminModel.js";
 import userModel from "../models/userMOdel.js";
 import orderModel from "../models/orderModel.js";
-import oauth2client  from "../config/google.js";
+import oauth2client from "../config/google.js";
 import axios from "axios";
 
 const register = async (req, res) => {
   const { name, email, password } = req.body;
 
   try {
+    // Minimal diagnostics to ensure backend is using the expected OAuth credentials
+    const clientIdForLog = (process.env.GOOGLE_CLIENT_ID || '').slice(0, 12);
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'postmessage';
+    console.log(`[googleLogin] Using GOOGLE_CLIENT_ID(prefix)=${clientIdForLog} redirectUri=${redirectUri}`);
     // check user available or not
     const seller = await sellerModel.findOne({ email });
-
 
     const isEmailTaken = await Promise.all([
       Admin.findOne({ email }),
       sellerModel.findOne({ email }),
-      userModel.findOne({ email })
+      userModel.findOne({ email }),
     ]);
-    
-    if (isEmailTaken.some(result => result)) {
+
+    if (isEmailTaken.some((result) => result)) {
       return res.status(400).json({
         success: false,
         message: "This Email is already in use. Please use another email!",
       });
     }
-    
+
     if (seller) {
       return res.json({
         success: false,
@@ -81,244 +84,109 @@ const register = async (req, res) => {
     res.json({ success: false, message: "Something went wrong" });
   }
 };
-
 const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
     // Find the seller by email
-    const sellerDoc = await sellerModel.findOne({ email }); // Renamed to avoid confusion
+    const sellerDoc = await sellerModel.findOne({ email });
 
     if (!sellerDoc) {
-      return res.json({ success: false, message: "Seller not found!" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Seller not found!" });
     }
 
     // Compare the password
     const isMatch = await bcrypt.compare(password, sellerDoc.password);
 
-    if (isMatch) {
-      // Generate JWT token
-      const token = jwt.sign({ id: sellerDoc._id }, process.env.JWT_SECRET);
-
-      // Check if an existing OTP exists for this seller
-      const existingOTP = await OTP.findOne({ seller: sellerDoc._id });
-
-      if (existingOTP) {
-        return res
-          .status(429)
-          .json({
-            success: false,
-            message:
-              "OTP already sent! Please wait before requesting a new one.",
-          });
-      }
-
-      // Generate a secure OTP
-      const otp = generateOTP();
-      // Hash the OTP (await the promise)
-      const hashedOTP = await bcrypt.hash(otp, 10);
-
-      // Create a new OTP document
-      const createdOTP = await OTP.create({
-        seller: sellerDoc._id, // Use the seller's ID from the document
-        otp: hashedOTP,
-      });
-
-      const otpId = createdOTP._id;
-
-      // Send the OTP via email
-      await sendMail(
-        email,
-        "Your OTP for Login",
-        `<!DOCTYPE html>
-          <html>
-          <head>
-              <title>QuickBites - OTP Verification</title>
-              <style>
-                  body {
-                      font-family: Arial, sans-serif;
-                      background-color: #fff3e0;
-                      margin: 0;
-                      padding: 0;
-                  }
-                  .email-container {
-                      max-width: 500px;
-                      margin: 30px auto;
-                      background: #ffffff;
-                      padding: 20px;
-                      border-radius: 10px;
-                      box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-                      text-align: center;
-                      border-top: 5px solid #ff6600;
-                  }
-                  .header {
-                      background-color: #ff6600;
-                      color: #ffffff;
-                      padding: 15px;
-                      font-size: 22px;
-                      font-weight: bold;
-                      border-radius: 10px 10px 0 0;
-                  }
-                  .content {
-                      font-size: 16px;
-                      color: #333333;
-                      margin: 20px 0;
-                  }
-                  .otp-code {
-                      font-size: 24px;
-                      font-weight: bold;
-                      color: #ffffff;
-                      background: #ff6600;
-                      padding: 10px 20px;
-                      display: inline-block;
-                      border-radius: 5px;
-                      letter-spacing: 2px;
-                      margin: 10px 0;
-                  }
-                  .footer {
-                      font-size: 12px;
-                      color: #666666;
-                      margin-top: 20px;
-                      border-top: 1px solid #dddddd;
-                      padding-top: 10px;
-                  }
-              </style>
-          </head>
-          <body>
-              <div class="email-container">
-                  <div class="header">QuickBites - Online Dining Solutions</div>
-                  <div class="content">
-                      <p>Hello,</p>
-                      <p>Your OTP for login is:</p>
-                      <div class="otp-code">${otp}</div>
-                      <p>This OTP is valid for only 5 minutes. Do not share it with anyone.</p>
-                      <p>If you did not request this, please ignore this email.</p>
-                  </div>
-                  <div class="footer">
-                      © 2025 QuickBites - Online Dining Solutions. All Rights Reserved.
-                  </div>
-              </div>
-          </body>
-          </html>`
-      );
-
-      res.json({ success: true, otpId,token, message: "OTP sent successfully!" });
-    } else {
-      return res.json({ success: false, message: "Invalid Credentials" });
+    if (!isMatch) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid Credentials" });
     }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: sellerDoc._id }, process.env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+    });
   } catch (err) {
-    console.error(err); // Log the full error for debugging
-    res.json({ success: false, message: "Something went wrong at login" });
+    console.error(err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong at login" });
   }
 };
 
-const forgetPassword = async (req, res) => {  
+const googleLogin = async (req, res) => {
   const { code } = req.body;
 
   try {
     if (!code) {
-      return res.status(400).json({ message: "Google verification code is required!" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Google auth code is required!" });
     }
 
-    // Exchange the code for tokens
-    const { tokens } = await oauth2client.getToken(code);
+    // Get tokens from Google (explicitly pass redirect_uri and client credentials)
+    const { tokens } = await oauth2client.getToken({
+      code,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+    });
     oauth2client.setCredentials(tokens);
 
-    // Get user info from Google
-    const { data } = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    });
+    // Get user profile
+    const { data } = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      }
+    );
 
-    const seller = await sellerModel.findOne({ email: data.email });
+    // Check if seller exists
+    let seller = await sellerModel.findOne({ email: data.email });
 
     if (!seller) {
-      return res.status(400).json({ message: "Seller not found with this email!" });
+      // Auto-register seller if not found
+      seller = new sellerModel({
+        name: data.name,
+        email: data.email,
+        password: "", // not required for Google login
+      });
+      await seller.save();
     }
 
-    await sendMail(email,"Your OTP for Reset Password",
-      `<!DOCTYPE html>
-      <html>
-      <head>
-          <title>QuickBites - OTP Verification</title>
-          <style>
-              body {
-                  font-family: Arial, sans-serif;
-                  background-color: #fff3e0;
-                  margin: 0;
-                  padding: 0;
-              }
-              .email-container {
-                  max-width: 500px;
-                  margin: 30px auto;
-                  background: #ffffff;
-                  padding: 20px;
-                  border-radius: 10px;
-                  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-                  text-align: center;
-                  border-top: 5px solid #ff6600;
-              }
-              .header {
-                  background-color: #ff6600;
-                  color: #ffffff;
-                  padding: 15px;
-                  font-size: 22px;
-                  font-weight: bold;
-                  border-radius: 10px 10px 0 0;
-              }
-              .content {
-                  font-size: 16px;
-                  color: #333333;
-                  margin: 20px 0;
-              }
-              .otp-code {
-                  font-size: 24px;
-                  font-weight: bold;
-                  color: #ffffff;
-                  background: #ff6600;
-                  padding: 10px 20px;
-                  display: inline-block;
-                  border-radius: 5px;
-                  letter-spacing: 2px;
-                  margin: 10px 0;
-              }
-              .footer {
-                  font-size: 12px;
-                  color: #666666;
-                  margin-top: 20px;
-                  border-top: 1px solid #dddddd;
-                  padding-top: 10px;
-              }
-          </style>
-      </head>
-      <body>
-          <div class="email-container">
-              <div class="header">QuickBites - Online Dining Solutions</div>
-              <div class="content">
-                  <p>Hello,</p>
-                  <p>Your OTP for forget password is:</p>
-                  <div class="otp-code">${generatedOtp}</div>
-                  <p>This OTP is valid for only 5 minutes. Do not share it with anyone.</p>
-                  <p>If you did not request this, please ignore this email.</p>
-              </div>
-              <div class="footer">
-                  &copy; 2025 QuickBites - Online Dining Solutions. All Rights Reserved.
-              </div>
-          </div>
-      </body>
-      </html>`
-    )
- 
-       res.status(200).json({success:true,otpId, message: "otp sent to your mail for forget password!" });
+    // Generate token
+    const token = jwt.sign({ id: seller._id }, process.env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
 
+    return res.status(200).json({
+      success: true,
+      message: "Google login successful",
+      token,
+    });
   } catch (error) {
-    console.error("Error in forgotPassword:", error);
-    return res.status(500).json({ message: "Something went wrong! Please try again later." });
+    console.error("Error in googleLogin:", error);
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Something went wrong with Google login",
+      });
   }
-}
+};
 
-// verify otp and reset password
-
-const resetPassword = async (req, res) => {
+// Reset password using Google verification
+const resetPasswordWithGoogle = async (req, res) => {
   const { code, newPassword, cPassword } = req.body;
 
   try {
@@ -330,125 +198,86 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ message: "Passwords do not match!" });
     }
 
-    // Exchange the code for tokens
+    // Exchange Google code for tokens
     const { tokens } = await oauth2client.getToken(code);
     oauth2client.setCredentials(tokens);
 
-    // Get user info from Google 
-    const { data } = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    });
+    // Get user info
+    const { data } = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      }
+    );
 
-    const seller = await sellerModel.findOne({_id:otpRecord.seller});
-    if(!seller)
-    {
-      return res.status(401).json({ message: "seller not found!" });
+    // Find seller by Google email
+    const seller = await sellerModel.findOne({ email: data.email });
+    if (!seller) {
+      return res
+        .status(404)
+        .json({ message: "No account found with this Google email" });
     }
 
-    const isExistPassword = await bcrypt.compare(newPassword,seller.password);
-    if(isExistPassword)
-    {
-      return res.status(400).json({success:false, message: "New password should not be same as old password!" });
-    }
-
-    if(newPassword !== cPassword)
-    {
-      return res.status(400).json({success:false, message: "Password and confirm password should be same!" });
-    }
-
-    const hashedPwd = await bcrypt.hash(newPassword,10)
-
-    const createNewPassword = await sellerModel.findByIdAndUpdate(seller._id,{password:hashedPwd},{new:true})
-    console.log("New Password:",createNewPassword);
-
-    await OTP.deleteOne({_id:otpRecord._id});
-
-    res.status(200).json({success:true, message: "Password updated successfully!" });
-
-  } catch (error) {
-    console.error("Error in verifyOTPAndResetPassword:", error);
-    return res.status(500).json({ message: "Something went wrong! Please try again later" });
-    
-  }
-
-}
-
-const verifyOTPAndLogin = async (req, res) => {
-  const { otpId, verificationcode } = req.body;
-  try {
-    if (!otpId || !verificationcode) {
+    // Ensure password isn’t the same as old one
+    const isSamePassword = await bcrypt.compare(newPassword, seller.password);
+    if (isSamePassword) {
       return res
         .status(400)
-        .json({
-          message: "otpid and vefification are required!",
-          success: false,
-        });
+        .json({ message: "New password cannot be same as old password!" });
     }
 
-    const otp = await OTP.findOne({ _id: otpId });
+    // Hash and update
+    const hashedPwd = await bcrypt.hash(newPassword, 10);
+    await sellerModel.findByIdAndUpdate(seller._id, { password: hashedPwd });
 
-    // find the otp into the database
-    if(!otp)
-    {
-     return res.status(401).json({message:"otp not found!",success:false})
-    }
-
-    // verifies the otp
-    const verifyOtpAndLogin = bcrypt.compare(verificationcode,otp.otp)
-    if(!verifyOtpAndLogin)
-    {
-     return res.status(401).json({message:"otp is incorrect!",success:false})
-    }
-
-    const sellerId = otp.seller;
-
-    // generate the jwt to login the seller
-    const token = jwt.sign({id : sellerId}, process.env.JWT_SECRET,{expiresIn:"1d"});
-    
-    // sent the security headers 
-    res.setHeader("Authorization",`Bearer ${token}`)
-
-       // deletes the otp after login for security
-       await OTP.deleteOne({_id:otpId})
-
-    res.status(200).json({message:"seller otp verified and login successfully!",success:true,token})
-
-       } catch (error) {
-    console.error("error to verfiy-otp", error);
-    res
+    return res
+      .status(200)
+      .json({ success: true, message: "Password reset successfully!" });
+  } catch (error) {
+    console.error("Error in resetPasswordWithGoogle:", error);
+    return res
       .status(500)
-      .json({ message: "failed to vefify the otp", success: false });
+      .json({ message: "Something went wrong, try again later" });
   }
 };
 
-const getAllResponses = async (req,res) => {
-  const {sellerId} = req.body;
+const getAllResponses = async (req, res) => {
+  const { sellerId } = req.body;
 
   try {
-    const data = await orderModel.find({sellerId})
-    if(!data)
-    {
-      return res.status(404).json({success:false,message:"Responses Not Found!"})
+    const data = await orderModel.find({ sellerId });
+    if (!data) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Responses Not Found!" });
     }
 
-    const ResponseData = data.map(order => ({
+    const ResponseData = data.map((order) => ({
       orderId: order._id,
-      items: order.items.map(item => ({
+      items: order.items.map((item) => ({
         name: item.name,
-        quantity: item.quantity
+        quantity: item.quantity,
       })),
       feedback: order.feedback,
-      response: order.response
+      response: order.response,
     }));
-    
 
-    return res.status(200).json({success:true,message:"responses fetched successfully!",ResponseData})
-
+    return res.status(200).json({
+      success: true,
+      message: "responses fetched successfully!",
+      ResponseData,
+    });
   } catch (error) {
-    return res.status(500).json({success:false,message:"failed to fetch the responses!"})
+    return res
+      .status(500)
+      .json({ success: false, message: "failed to fetch the responses!" });
   }
+};
 
-}
-
-export { register, login, resetPassword, forgetPassword, getAllResponses};
-
+export {
+  register,
+  login,
+  resetPasswordWithGoogle,
+  googleLogin,
+  getAllResponses,
+};

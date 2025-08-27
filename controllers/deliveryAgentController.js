@@ -15,9 +15,7 @@ import fs from "fs"
 
 const inviteDeliveryAgent = async (req, res) => {
   try {
-    const { sellerId, firstName, lastName, contactNo, email, gender } =
-      req.body;
-    // console.log(sellerId, firstName, lastName, contactNo, email, gender)
+    const { sellerId, firstName, lastName, contactNo, email, gender } = req.body;
 
     if (!firstName || !lastName || !contactNo || !email || !gender) {
       return res.json({ success: false, message: "Missing Fields" });
@@ -30,17 +28,15 @@ const inviteDeliveryAgent = async (req, res) => {
         .json({ success: false, message: "Email already used" });
     }
 
-    const restoData = await restaurantModel.find({ sellerId: sellerId });
-
+    const restoData = await restaurantModel.findOne({ sellerId });
     if (!restoData) {
       return res
         .status(404)
         .json({ success: false, message: "Restaurant not found" });
     }
 
-    const secretCode = crypto.randomBytes(4).toString("hex"); // 8-character hex code
-    // console.log('secretCode',secretCode);
-
+    // Generate secret invite code
+    const secretCode = crypto.randomBytes(4).toString("hex"); // 8-char hex
     const codeexpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     const deliveryAgentData = {
@@ -50,97 +46,29 @@ const inviteDeliveryAgent = async (req, res) => {
       contactNo,
       email,
       gender,
-      restoname: restoData[0].name,
+      restoname: restoData.name,
       secretCode,
       codeexpiresAt,
       isRegistered: false,
     };
 
     const newDeliveryAgent = new deliveryAgentModel(deliveryAgentData);
-
     await newDeliveryAgent.save();
-
-    const inviteCode = secretCode;
-
-    await sendMail(
-      email,
-      "Delivery boy Invite Code",
-      `<!DOCTYPE html>
-<html lang="en" style="margin: 0; padding: 0;">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>QuickBite Delivery Registration</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f9f9f9; font-family: Arial, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9f9f9;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin: 40px 0;">
-          <tr>
-            <td style="background-color: #ff6b00; padding: 20px; color: white; text-align: center;">
-              <h1 style="margin: 0; font-size: 24px;">QuickBite</h1>
-              <p style="margin: 4px 0 0;">Online Dining Solutions</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="color: #333333;">You're Invited to Join as a Delivery Partner!</h2>
-              <p style="font-size: 16px; color: #555555;">
-                Hello, <br /><br />
-                You have been invited to complete your registration as a delivery partner with <strong>QuickBite</strong>.
-              </p>
-
-              <p style="font-size: 16px; color: #555555;">
-                Use the following secret code to continue your registration:
-              </p>
-
-              <div style="background-color: #fff4eb; padding: 15px; text-align: center; font-size: 20px; font-weight: bold; color: #ff6b00; border: 2px dashed #ff6b00; margin: 20px 0;">
-                ${inviteCode}
-              </div>
-
-              <p style="font-size: 14px; color: #777777;">
-                ⚠️ This code is valid for 1 hour. Make sure to complete your registration before it expires.
-              </p>
-
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="https://your-app-link.com/delivery-register" 
-                   style="background-color: #ff6b00; color: white; padding: 14px 24px; text-decoration: none; font-weight: bold; border-radius: 6px;">
-                  Complete Registration
-                </a>
-              </div>
-
-              <p style="font-size: 14px; color: #999999; text-align: center;">
-                Need help? Contact our support team at <a href="mailto:support@quickbite.com" style="color: #ff6b00;">support@quickbite.com</a>
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color: #f2f2f2; padding: 20px; text-align: center; font-size: 12px; color: #999999;">
-              &copy; 2025 QuickBite – Online Dining Solutions. All rights reserved.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-`
-    );
 
     res.json({
       success: true,
       sellerId,
-      message: "Invitation sent successfully",
+      secretCode, // 👈 return code to seller
+      message: "Delivery agent invite code generated successfully",
     });
   } catch (error) {
     console.error(error);
-    const statuscode = error.statusCode || 500;
-    const errorMessage = error.message || "Something went wrong";
-    res.status(statuscode).json({ success: false, message: errorMessage });
+    res
+      .status(error.statusCode || 500)
+      .json({ success: false, message: error.message || "Something went wrong" });
   }
 };
+
 
 const completeDeliveryAgentRegistration = async (req, res) => {
   try {
