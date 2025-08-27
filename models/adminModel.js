@@ -15,8 +15,13 @@ const AdminSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
-      unique: true,
+      required: function() {
+        return !this.googleId; // Password not required if Google login
+      },
+    },
+    googleId: {
+      type: String,
+      sparse: true, // Allows multiple null values
     },
     gender: {
       type: String,

@@ -296,25 +296,96 @@ const updateAdmin = async (req, res) => {
   }
 };
 
-// login & send OTP
+// Google OAuth Login for Admin
+const googleLogin = async (req, res) => {
+  const { credential } = req.body;
+
+  try {
+    if (!credential) {
+      return res.status(400).json({
+        success: false,
+        message: "Google credential is required!"
+      });
+    }
+
+    // Verify the Google token
+    const ticket = await oauth2client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, picture, sub: googleId } = payload;
+
+    // Check if admin exists with this email
+    let admin = await Admin.findOne({ email: email.toLowerCase() });
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "No admin account found with this Google email!"
+      });
+    }
+
+    // Update admin with Google ID if not already set
+    if (!admin.googleId) {
+      admin.googleId = googleId;
+      await admin.save();
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ adminId: admin._id }, process.env.JWT_SECRET, {
+      expiresIn: "1d"
+    });
+
+    res.status(200).json({
+      success: true,
+      token,
+      admin: {
+        id: admin._id,
+        userName: admin.userName,
+        email: admin.email
+      },
+      message: "Google login successful!"
+    });
+
+  } catch (error) {
+    console.error("Error in Google login:", error);
+    res.status(500).json({
+      success: false,
+      message: "Google authentication failed!"
+    });
+  }
+};
+
+// Admin Login
 const loginAdmin = async (req, res) => {
   const { email, password } = req.body;
 
   try {
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required!" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Email and password are required!" 
+      });
     }
 
     const normalizeEmail = email.toLowerCase();
     const admin = await Admin.findOne({ email: normalizeEmail });
 
     if (!admin) {
-      return res.status(401).json({ message: "Invalid email or password!" });
+      return res.status(401).json({ 
+        success: false,
+        message: "Invalid email or password!" 
+      });
     }
 
     const isValidPassword = await bcrypt.compare(password, admin.password);
     if (!isValidPassword) {
-      return res.status(401).json({ message: "Invalid email or password!" });
+      return res.status(401).json({ 
+        success: false,
+        message: "Invalid email or password!" 
+      });
     }
 
     const token = jwt.sign({ adminId: admin._id }, process.env.JWT_SECRET, {
@@ -324,274 +395,173 @@ const loginAdmin = async (req, res) => {
     res.status(200).json({
       success: true,
       token,
+      admin: {
+        id: admin._id,
+        userName: admin.userName,
+        email: admin.email
+      },
       message: "Login successful!"
     });
 
-    // Generate Secure OTP
-    const otp = generateOTP();
-
-    // Hash OTP before storing (Security Improvement)
-    const hashedOTP = await bcrypt.hash(otp, 10);
-    const createdOTP = await new OTP({
-      admin: findAdmin._id,
-      otp: hashedOTP,
-    }).save();
-
-    const otpId = createdOTP._id;
-    // console.log(otpId)
-
-    // Send OTP via email
-    await sendMail(
-      normalizeEmail,
-      "Your OTP for Login",
-      `<!DOCTYPE html>
-        <html>
-        <head>
-            <title>QuickBites - OTP Verification</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    background-color: #fff3e0;
-                    margin: 0;
-                    padding: 0;
-                }
-                .email-container {
-                    max-width: 500px;
-                    margin: 30px auto;
-                    background: #ffffff;
-                    padding: 20px;
-                    border-radius: 10px;
-                    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-                    text-align: center;
-                    border-top: 5px solid #ff6600;
-                }
-                .header {
-                    background-color: #ff6600;
-                    color: #ffffff;
-                    padding: 15px;
-                    font-size: 22px;
-                    font-weight: bold;
-                    border-radius: 10px 10px 0 0;
-                }
-                .content {
-                    font-size: 16px;
-                    color: #333333;
-                    margin: 20px 0;
-                }
-                .otp-code {
-                    font-size: 24px;
-                    font-weight: bold;
-                    color: #ffffff;
-                    background: #ff6600;
-                    padding: 10px 20px;
-                    display: inline-block;
-                    border-radius: 5px;
-                    letter-spacing: 2px;
-                    margin: 10px 0;
-                }
-                .footer {
-                    font-size: 12px;
-                    color: #666666;
-                    margin-top: 20px;
-                    border-top: 1px solid #dddddd;
-                    padding-top: 10px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="email-container">
-                <div class="header">QuickBites - Online Dining Solutions</div>
-                <div class="content">
-                    <p>Hello,</p>
-                    <p>Your OTP for login is:</p>
-                    <div class="otp-code">${otp}</div>
-                    <p>This OTP is valid for only 5 minutes. Do not share it with anyone.</p>
-                    <p>If you did not request this, please ignore this email.</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 QuickBites - Online Dining Solutions. All Rights Reserved.
-                </div>
-            </div>
-        </body>
-        </html>`
-    );
-
-    res.json({ message: "OTP sent", otpId });
   } catch (error) {
     console.error("Error in loginAdmin:", error);
-    res
-      .status(500)
-      .json({ message: "Something went wrong! Please try again later." });
+    res.status(500).json({ 
+      success: false,
+      message: "Something went wrong! Please try again later." 
+    });
   }
 };
 
+// Forgot Password
 const forgotPassword = async (req, res) => {
   const { email } = req.body;
 
   try {
     if (!email) {
-      return res.status(400).json({ message: "Email is required!" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Email is required!" 
+      });
     }
 
     const admin = await Admin.findOne({ email });
     if (!admin) {
-      return res.status(400).json({ message: "Admin not found with this email!" });
+      return res.status(404).json({ 
+        success: false,
+        message: "No admin found with this email address!" 
+      });
     }
-
-    const loginLink = oauth2client.generateAuthUrl({
-      access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/userinfo.email'],
-      state: admin._id.toString()
-    });
-
-    await sendMail(
-      email,
-      "Your OTP for Reset Password",
-      `<!DOCTYPE html>
-      <html>
-      <head>
-          <title>QuickBites - OTP Verification</title>
-          <style>
-              body {
-                  font-family: Arial, sans-serif;
-                  background-color: #fff3e0;
-                  margin: 0;
-                  padding: 0;
-              }
-              .email-container {
-                  max-width: 500px;
-                  margin: 30px auto;
-                  background: #ffffff;
-                  padding: 20px;
-                  border-radius: 10px;
-                  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-                  text-align: center;
-                  border-top: 5px solid #ff6600;
-              }
-              .header {
-                  background-color: #ff6600;
-                  color: #ffffff;
-                  padding: 15px;
-                  font-size: 22px;
-                  font-weight: bold;
-                  border-radius: 10px 10px 0 0;
-              }
-              .content {
-                  font-size: 16px;
-                  color: #333333;
-                  margin: 20px 0;
-              }
-              .otp-code {
-                  font-size: 24px;
-                  font-weight: bold;
-                  color: #ffffff;
-                  background: #ff6600;
-                  padding: 10px 20px;
-                  display: inline-block;
-                  border-radius: 5px;
-                  letter-spacing: 2px;
-                  margin: 10px 0;
-              }
-              .footer {
-                  font-size: 12px;
-                  color: #666666;
-                  margin-top: 20px;
-                  border-top: 1px solid #dddddd;
-                  padding-top: 10px;
-              }
-          </style>
-      </head>
-      <body>
-          <div class="email-container">
-              <div class="header">QuickBites - Online Dining Solutions</div>
-              <div class="content">
-                  <p>Hello,</p>
-                  <p>Your OTP for forget password is:</p>
-                  <div class="otp-code">${generatedOtp}</div>
-                  <p>This OTP is valid for only 5 minutes. Do not share it with anyone.</p>
-                  <p>If you did not request this, please ignore this email.</p>
-              </div>
-              <div class="footer">
-                  &copy; 2025 QuickBites - Online Dining Solutions. All Rights Reserved.
-              </div>
-          </div>
-      </body>
-      </html>`
-    );
 
     res.status(200).json({
       success: true,
-      otpId,
-      message: "otp sent to your mail for forget password!",
+      message: "Password reset link has been sent to your email address.",
     });
   } catch (error) {
     console.error("Error in forgotPassword:", error);
     return res
       .status(500)
-      .json({ message: "Something went wrong! Please try again later." });
+      .json({ 
+        success: false,
+        message: "Something went wrong! Please try again later." 
+      });
   }
 };
 
-// verify otp and reset password
-
-const resetPassword = async (req, res) => {
-  const { code, newPassword, confirmPassword } = req.body;
+// Verify Google credential for password reset
+const verifyGoogleReset = async (req, res) => {
+  const { credential, email } = req.body;
 
   try {
-    if (!code || !newPassword || !confirmPassword) {
-      return res.status(400).json({ message: "All fields are required!" });
+    if (!credential || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Google credential and email are required!"
+      });
+    }
+
+    // Verify the Google token
+    const ticket = await oauth2client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    const googleEmail = payload.email;
+
+    // Check if the Google email matches the admin email
+    if (googleEmail.toLowerCase() !== email.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: "Google account email does not match the admin email!"
+      });
+    }
+
+    // Check if admin exists with this email
+    const admin = await Admin.findOne({ email: email.toLowerCase() });
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin not found with this email!"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Google verification successful! You can now reset your password."
+    });
+
+  } catch (error) {
+    console.error("Error in Google verification:", error);
+    res.status(500).json({
+      success: false,
+      message: "Google verification failed!"
+    });
+  }
+};
+
+// Reset password after Google verification
+const resetPassword = async (req, res) => {
+  const { email, newPassword, confirmPassword } = req.body;
+
+  try {
+    if (!email || !newPassword || !confirmPassword) {
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields are required!" 
+      });
     }
 
     if (newPassword !== confirmPassword) {
-      return res.status(400).json({ message: "Passwords do not match!" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Passwords do not match!" 
+      });
     }
 
-    const { tokens } = await oauth2client.getToken(code);
-    const { data } = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters long!"
+      });
+    }
+
+    const admin = await Admin.findOne({ email: email.toLowerCase() });
+    if (!admin) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Admin not found!" 
+      });
+    }
+
+    // Check if new password is same as old password
+    if (admin.password) {
+      const isSamePassword = await bcrypt.compare(newPassword, admin.password);
+      if (isSamePassword) {
+        return res.status(400).json({
+          success: false,
+          message: "New password cannot be the same as your current password!"
+        });
+      }
+    }
+
+    // Hash and update the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await Admin.findByIdAndUpdate(admin._id, { password: hashedPassword });
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Password reset successful!" 
     });
 
-    const admin = await Admin.findOne({ _id: otpRecord.admin });
-    if (!admin) {
-      return res.status(401).json({ message: "Admin not found!" });
-    }
-
-    const isExistPassword = await bcrypt.compare(newPassword, admin.password);
-    if (isExistPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "New password should not be same as old password!",
-      });
-    }
-
-    if (newPassword !== cPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "Password and confirm password should be same!",
-      });
-    }
-
-    const hashedPwd = await bcrypt.hash(newPassword, 10);
-
-    const createNewPassword = await Admin.findByIdAndUpdate(
-      admin._id,
-      { password: hashedPwd },
-      { new: true }
-    );
-    console.log("New Password:", createNewPassword);
-
-    await OTP.deleteOne({ _id: otpRecord._id });
-
-    res
-      .status(200)
-      .json({ success: true, message: "Password updated successfully!" });
   } catch (error) {
-    console.error("Error in verifyOTPAndResetPassword:", error);
-    return res
-      .status(500)
-      .json({ message: "Something went wrong! Please try again later" });
+    console.error("Error in resetPassword:", error);
+    return res.status(500).json({ 
+      success: false,
+      message: "Something went wrong! Please try again later." 
+    });
   }
 };
+
 
 // verify OTP & Login
 
@@ -662,16 +632,16 @@ const logoutAdmin = async (req, res) => {
     const adminId = decoded.adminId;
 
     // Remove OTP related to the adminId
-    await OTP.deleteOne({ admin: adminId });
+    // await OTP.deleteOne({ admin: adminId });
 
-    res.clearCookie("token", {
-      httpOnly: false,
-      secure: false,
-      sameSite: "Lax",
-      path: "/",
-    });
+    // res.clearCookie("token", {
+    //   httpOnly: false,
+    //   secure: false,
+    //   sameSite: "Lax",
+    //   path: "/",
+    // });
 
-    res.setHeader("Authorization", "");
+    // res.setHeader("Authorization", "");
     res.json({ message: "Logged out successfully" });
   } catch (error) {
     console.error("Logout error:", error);
@@ -903,23 +873,31 @@ const checkPromotion = async (req, res) => {
 const getUserOrderReport = async (req, res) => {
   try {
     const users = await userModel.find().select("name email phone");
+
     const orderCounts = await orderModel.aggregate([
       { $group: { _id: "$userId", orders: { $sum: 1 } } },
     ]);
 
-    // The part you highlighted
+    // Build orderCountMap safely
     const orderCountMap = {};
     orderCounts.forEach((count) => {
-      orderCountMap[count._id.toString()] = count.orders;
+      if (count?._id) {
+        orderCountMap[count._id.toString()] = count.orders || 0;
+      }
     });
 
-    const report = users.map((user, index) => ({
-      id: index + 1,
-      name: user.name || "N/A",
-      email: user.email,
-      phone: user?.phone || "N/A",
-      orders: orderCountMap[user._id.toString()] || 0,
-    }));
+    // Build report safely
+    const report = users.map((user, index) => {
+      const userIdStr = user?._id ? user._id.toString() : null;
+
+      return {
+        id: index + 1,
+        name: user?.name || "N/A",
+        email: user?.email || "N/A",
+        phone: user?.phone || "N/A",
+        orders: userIdStr && orderCountMap[userIdStr] ? orderCountMap[userIdStr] : 0,
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -927,11 +905,13 @@ const getUserOrderReport = async (req, res) => {
       message: "User order report generated successfully",
     });
   } catch (error) {
+    console.error("getUserOrderReport error:", error);
     res
       .status(500)
       .json({ success: false, message: "Server error", error: error.message });
   }
 };
+
 
 const getOrderStatusReport = async (req, res) => {
   try {
@@ -1143,7 +1123,6 @@ export {
   registerAdmin,
   loginAdmin,
   verifyOTPAndLogin,
-// /  verifyOTPAndForgetPasswordAdmin,
   logoutAdmin,
   updateAdmin,
   getAdminProfile,
@@ -1159,5 +1138,8 @@ export {
   sendContactMessage,
   getAllContactMessages,
   getDailyOrders,
-  getMonthlyRevenue
+  getMonthlyRevenue,
+  googleLogin,
+  verifyGoogleReset,
+  resetPassword
 };

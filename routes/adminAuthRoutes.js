@@ -1,5 +1,28 @@
 import express from "express"
-import { logoutAdmin, registerAdmin, loginAdmin, forgotPassword, getAllOrders, updateAdmin, getAdminProfile, addPromotion, updatePromotion, deletPromotion, checkPromotion, getAllPromtions, getUserOrderReport, getOrderStatusReport, getRestaurantReport, getDeliveryBoyReport, sendContactMessage, getAllContactMessages } from "../controllers/adminController.js"
+import {
+  registerAdmin,
+  loginAdmin,
+  forgotPassword,
+  verifyOTPAndLogin,
+  logoutAdmin,
+  updateAdmin,
+  getAdminProfile,
+  googleLogin,
+  verifyGoogleReset,
+  resetPassword,
+  getAllOrders,
+  addPromotion,
+  updatePromotion,
+  deletPromotion,
+  checkPromotion,
+  getAllPromtions,
+  getUserOrderReport,
+  getOrderStatusReport,
+  getRestaurantReport,
+  getDeliveryBoyReport,
+  sendContactMessage,
+  getAllContactMessages,
+} from "../controllers/adminController.js"
 import upload from "../middlewares/multer.js"
 
 const AdminAuthRouter = express.Router();
@@ -21,6 +44,9 @@ AdminAuthRouter.post('/receiveFeedback',  sendContactMessage);
 AdminAuthRouter.get('/getAllContactMessages',  getAllContactMessages);
 AdminAuthRouter.post('/checkpromotion',  checkPromotion);
 AdminAuthRouter.post("/forgot-password", forgotPassword);
+AdminAuthRouter.post("/google", googleLogin);
+AdminAuthRouter.post("/verify-google-reset", verifyGoogleReset);
+AdminAuthRouter.post("/reset-password", resetPassword);
 
 AdminAuthRouter.post("/logout", logoutAdmin);
 AdminAuthRouter.get('/getall-orders', getAllOrders);

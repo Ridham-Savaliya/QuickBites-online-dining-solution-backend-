@@ -1,11 +1,17 @@
 import {google} from 'googleapis';
 
-const GOOGle_CLIENT_ID = process.env.GOOGle_CLIENT_ID
-const GOOGle_CLIENT_SECRET = process.env.GOOGle_CLIENT_SECRET
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET
+
+// Validate required environment variables
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  console.warn('Warning: Google OAuth credentials not found in environment variables');
+  console.warn('Google login will not work without GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
+}
 
 const oauth2client = new google.auth.OAuth2(
-  GOOGle_CLIENT_ID,
-  GOOGle_CLIENT_SECRET,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
   'postmessage'
 )
 
