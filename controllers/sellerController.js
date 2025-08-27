@@ -14,9 +14,11 @@ const register = async (req, res) => {
 
   try {
     // Minimal diagnostics to ensure backend is using the expected OAuth credentials
-    const clientIdForLog = (process.env.GOOGLE_CLIENT_ID || '').slice(0, 12);
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'postmessage';
-    console.log(`[googleLogin] Using GOOGLE_CLIENT_ID(prefix)=${clientIdForLog} redirectUri=${redirectUri}`);
+    const clientIdForLog = (process.env.GOOGLE_CLIENT_ID || "").slice(0, 12);
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || "postmessage";
+    console.log(
+      `[googleLogin] Using GOOGLE_CLIENT_ID(prefix)=${clientIdForLog} redirectUri=${redirectUri}`
+    );
     // check user available or not
     const seller = await sellerModel.findOne({ email });
 
@@ -134,13 +136,30 @@ const googleLogin = async (req, res) => {
         .json({ success: false, message: "Google auth code is required!" });
     }
 
+    // Debug logging for environment variables
+    console.log("[googleLogin] Environment variables check:");
+    console.log(
+      "GOOGLE_CLIENT_ID:",
+      process.env.GOOGLE_CLIENT_ID ? "SET" : "NOT SET"
+    );
+    console.log(
+      "GOOGLE_CLIENT_SECRET:",
+      process.env.GOOGLE_CLIENT_SECRET ? "SET" : "NOT SET"
+    );
+    console.log(
+      "GOOGLE_REDIRECT_URI:",
+      process.env.GOOGLE_REDIRECT_URI || "NOT SET"
+    );
+    console.log("JWT_SECRET:", process.env.JWT_SECRET ? "SET" : "NOT SET");
+
     // Get tokens from Google (explicitly pass redirect_uri and client credentials)
     const { tokens } = await oauth2client.getToken({
       code,
-      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      redirect_uri: "postmessage", // always postmessage for popup flow
       client_id: process.env.GOOGLE_CLIENT_ID,
       client_secret: process.env.GOOGLE_CLIENT_SECRET,
     });
+
     oauth2client.setCredentials(tokens);
 
     // Get user profile
@@ -176,12 +195,10 @@ const googleLogin = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in googleLogin:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Something went wrong with Google login",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong with Google login",
+    });
   }
 };
 
@@ -198,8 +215,13 @@ const resetPasswordWithGoogle = async (req, res) => {
       return res.status(400).json({ message: "Passwords do not match!" });
     }
 
-    // Exchange Google code for tokens
-    const { tokens } = await oauth2client.getToken(code);
+    // CORRECTED: Pass the redirect_uri explicitly to getToken
+    // This is the source of the `redirect_uri_mismatch` error.
+    const { tokens } = await oauth2client.getToken({
+      code,
+      redirect_uri: "postmessage",
+    });
+
     oauth2client.setCredentials(tokens);
 
     // Get user info
@@ -217,8 +239,6 @@ const resetPasswordWithGoogle = async (req, res) => {
         .status(404)
         .json({ message: "No account found with this Google email" });
     }
-
-    // sdvd
 
     // Ensure password isn’t the same as old one
     const isSamePassword = await bcrypt.compare(newPassword, seller.password);
