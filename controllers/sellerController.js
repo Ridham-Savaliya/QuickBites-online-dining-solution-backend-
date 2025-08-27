@@ -218,6 +218,8 @@ const resetPasswordWithGoogle = async (req, res) => {
         .json({ message: "No account found with this Google email" });
     }
 
+    // sdvd
+
     // Ensure password isn’t the same as old one
     const isSamePassword = await bcrypt.compare(newPassword, seller.password);
     if (isSamePassword) {
