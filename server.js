@@ -22,31 +22,24 @@ import { DeliveryAgentModelRouter } from "./routes/deliveryAgentRoute.js";
 const app = express();
 const server = http.createServer(app);
 
-// const io = new Server(server, {
-//   cors: {
-//     origin: [
-//       "http://localhost:5173",
-//       "http://localhost:5174",
-//       "http://localhost:5175",
-//       "http://localhost:5176",
-//       "http://localhost:5177",
-//       "https://quick-bites-frontend-six.vercel.app",
-//       "https://quickbites-admin-panel.vercel.app",
-//       "https://quick-bites-seller.vercel.app",
-//       "https://quick-bites-delivery.vercel.app",
-//       "http://192.168.237.229:5173"
-//     ],
-//     methods: ['GET', 'POST'],
-//     credentials: true,
-//   },
-// });
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+  "http://localhost:5176",
+  "http://localhost:5177",
+  "http://192.168.237.229:5173",
+  "https://quick-bites-frontend-six.vercel.app",
+  "https://quickbites-admin-panel.vercel.app",
+  "https://quick-bites-seller.vercel.app",
+  "https://deliverypanel-quickbites.vercel.app",
+];
 
-// ✅ Socket.IO with open CORS (allow everyone)
 const io = new Server(server, {
   cors: {
-    origin: "*",   // 👈 allow all origins
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
-    credentials: true, // 👈 disable credentials since "*" can't be combined with it
+    credentials: true, // ✅ now valid, since origins are not "*"
   },
 });
 
