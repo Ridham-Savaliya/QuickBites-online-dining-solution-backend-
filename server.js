@@ -46,12 +46,12 @@ const io = new Server(server, {
   cors: {
     origin: "*",   // 👈 allow all origins
     methods: ["GET", "POST"],
-    credentials: false, // 👈 disable credentials since "*" can't be combined with it
+    credentials: true, // 👈 disable credentials since "*" can't be combined with it
   },
 });
 
 // Port
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 4000``;
 connectDB();
 connectCloudinary();
 
