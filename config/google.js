@@ -17,7 +17,3 @@ const oauth2client = new google.auth.OAuth2(
 );
 
 export default oauth2client;
-
-
-
-// sdvsdvdsv

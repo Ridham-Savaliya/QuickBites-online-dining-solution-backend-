@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
-import http from "http";
+import http from "http";``
 import { Server } from "socket.io"; // ✅ Correct named import
 import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
@@ -198,6 +198,12 @@ app.get("/healthcheck", (req, res) => {
   console.log('healthcheck route touched from https://quickbites-one.vercel.app at:',new Date().toLocaleString());
 });
 
+app.get('/envcheck', (req, res) => {
+  res.json({
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || 'Not Set',
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Not Set'
+  });
+});
 
 
 // Testing API
